@@ -534,7 +534,7 @@ print(metrics)
 ##KNN
 ```{r}
 # Convert categorical variables to numeric for KNN
-#因为 KNN 不能直接处理 factor/categorical variable，所以你先把类别变量转成 numeric。
+#因为 KNN 不能直接处理 factor/categorical variable，所以先把类别变量转成 numeric。
 #更好的做法：用 dummy variables / one-hot encoding 会更好
 tit$Sex <- as.numeric(tit$Sex)
 tit$Embarked <- as.numeric(tit$Embarked)
@@ -553,11 +553,11 @@ train.Y <- trainset$Survived
 test.Y <- testset$Survived
 #这里要注意什么
 #KNN 非常依赖距离，所以通常要先 standardize / normalize。
-#你这里没有做 scaling，这会让像 Fare、Age 这种数值范围大的变量主导距离计算。
+#这里没有做 scaling，这会让像 Fare、Age 这种数值范围大的变量主导距离计算。
 
 # Run KNN model
 set.seed(2025)
-k <- 5 #这是一个常见起点，后续可以通过交叉验证调参，不然老师/面试官可能会问：为什么是 5，不是 3 或 7？
+k <- 5 #这是一个常见起点，后续可以通过交叉验证调参，不然老师可能会问：为什么是 5，不是 3 或 7？
 knn.pred <- knn(train.X, test.X, train.Y, k = k)
 
 
