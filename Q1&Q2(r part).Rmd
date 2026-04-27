@@ -1,0 +1,350 @@
+---
+title: "Q1"
+author: "Nyew Jia Wen"
+Student ID :210422078
+output: html_document
+---
+### ===================== Q1a =====================
+#set up a function
+```{r}
+f <- function(x){
+  return(0.5*exp(-abs(x)))
+}
+```
+#step 2
+```{r}
+MH <- function(N,s,initial_x){
+  x <- numeric(N)#step 1 set up an initial value
+  s>0
+  x <- rep(s, N)
+  x[1] <- initial_x
+  for(i in 2:N){
+    x_star <- rnorm(1,mean = x[i-1],sd = s)
+    ratio <- f(x_star)/f(x[i-1])
+    u <- runif(1,min=0,max=1)
+    if (log(u)< log(ratio)){
+      x[i] <- x_star
+    }else{
+        x[i] <- x[i-1]
+      }
+  }
+  return(x)
+}
+```
+
+```{r}
+N <- 10000
+s<-1
+initial_x<-0
+generated_samples <-MH(N,s ,initial_x)
+```
+
+#construct a histogram and kernel density plot
+```{r}
+hist(generated_samples,freq=FALSE,breaks = 30,col = "purple",main = "Metropolis-Hastings Sampling",xlab = "x",ylab = "Density")
+curve(f(x),add = TRUE,col="cyan3",lwd=7)
+kernel_dens <- density(generated_samples)
+lines(kernel_dens$x, kernel_dens$y,col="darkorange",lwd=5)
+legend("topright", legend = c("Histogram", "Kernel Density", "f(x)"), col = c("purple", "darkorange", "cyan3"), lty = c(1, 2, 1), lwd = 2)
+```
+#report the sample mean and standard deviation
+```{r}
+sample_mean<-mean(generated_samples)
+sample_std<-sd(generated_samples)
+cat("Sample Mean:",sample_mean,"\n")
+cat("Sample Standard deviation:",sample_std,"\n")
+```
+### ===================== Q1b =====================
+
+```{r}
+compute_r_hat <- function(chains) {
+  J <- length(chains)
+  N <- length(chains[[1]])
+  M <- sapply(chains, function(chain) mean(chain))
+  V <- sapply(chains, function(chain) mean((chain - mean(chain))^2))
+  W <- mean(V)
+  M_bar <- mean(M)
+  B <- mean((M - M_bar)^2)
+  R_hat <- sqrt((B + W) / W)
+  return(R_hat)
+}
+```
+
+```{r}
+N <- 2000
+J <- 4
+s_values <- seq(0.001, 1, by = 0.01)
+R_hat_values <- numeric(length(s_values))
+```
+
+```{r}
+for (i in seq_along(s_values)) {
+  s <- s_values[i]
+  chains <- lapply(1:J, function(j) {
+    MH(N, s, initial_x)
+  })
+  R_hat_values[i] <- compute_r_hat(chains)
+}
+```
+
+#provide a plot
+```{r}
+plot(s_values, R_hat_values, type = "l", xlab = "s", ylab = "R_hat", main = "R_hat vs. s")
+```
+---------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------Q2-----------------------------------------------
+
+#data cleaning and reading
+```{r}
+library(DBI)#让R可以和SQLITE 说话
+library(dplyr)#做数据清理的
+#I used R with DBI and SQLite because the flight dataset was large, so it was more efficient to store the data in a database and query only the required fields.
+library("RColorBrewer")
+```
+
+#load and write data to database
+```{r}
+if(file.exists("C:\\Users\\user\\Documents\\st2195\\airline.db"))#目的检查看有没有旧文档有的话删 怕影响新data
+  file.remove("C:\\Users\\user\\Documents\\st2195\\airline.db")#后果：repeat data/different result
+#总结：每次跑数据前都从干净数据库开始
+
+conn <- dbConnect(RSQLite::SQLite(), "airline.db")
+#conn就是数据库的把手
+#I created a fresh SQLite database and established a connection so I could store and query large flight data efficiently without loading everything into memory at once. 
+airports <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\airports.csv", header = TRUE)
+planes <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\plane-data.csv", header = TRUE)
+
+
+```
+
+```{r}
+#dbWriteTable（conn,name，value，expand的意思)
+dbWriteTable(conn, "airports", airports,append=TRUE)
+dbWriteTable(conn, "planes", planes,append=TRUE)
+#总结：因为后面要用到sql去select和join
+
+#因为数据太大 我们做partitioned loading分批读取
+data.1998 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\1998.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.1999 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\1999.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2000 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2000.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2001 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2001.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2002 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2002.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2003 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2003.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2004 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2004.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2005 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2005.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2006 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2006.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+data.2007 <- read.csv("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\2007.csv", header=TRUE, sep=',', stringsAsFactors = TRUE)
+
+```
+
+```{r}
+data.1998$Cancelled <- factor(data.1998$Cancelled)
+data.1999$Cancelled <- factor(data.1999$Cancelled)
+data.2000$Cancelled <- factor(data.2000$Cancelled)
+data.2001$Cancelled <- factor(data.2001$Cancelled)
+data.2002$Cancelled <- factor(data.2002$Cancelled)
+data.2003$Cancelled <- factor(data.2003$Cancelled)
+data.2004$Cancelled <- factor(data.2004$Cancelled)
+data.2005$Cancelled <- factor(data.2005$Cancelled)
+data.2006$Cancelled <- factor(data.2006$Cancelled)
+data.2007$Cancelled <- factor(data.2007$Cancelled)
+#把他当factor来观察
+#I treated cancellation as a categorical field because it represents flight status rather than a continuous numeric measure.
+```
+
+```{r}
+dbWriteTable(conn, "flights", data.1998, append = TRUE)
+dbWriteTable(conn, "flights", data.1999, append = TRUE)
+dbWriteTable(conn, "flights", data.2000, append = TRUE)
+dbWriteTable(conn, "flights", data.2001, append = TRUE)
+dbWriteTable(conn, "flights", data.2002, append = TRUE)
+dbWriteTable(conn, "flights", data.2003, append = TRUE)
+dbWriteTable(conn, "flights", data.2004, append = TRUE)
+dbWriteTable(conn, "flights", data.2005, append = TRUE)
+dbWriteTable(conn, "flights", data.2006, append = TRUE)
+dbWriteTable(conn, "flights", data.2007, append = TRUE)
+```
+
+### ===================== Q2a =====================
+# Best time of day
+```{r}
+Time.LeastDelay <- dbGetQuery(conn,
+  "SELECT DepTime
+  FROM flights
+  WHERE flights.Cancelled = 0 AND Diverted = 0 AND DepDelay > 0 #没取消的+没改降落地的+确实发生了depdelay
+  ORDER BY DepDelay")#按小到大排序
+#你排除了准点和提早的航班
+head(Time.LeastDelay)
+#总结：寻找在所有发生过 delay 的航班里，谁的 delay 最小”
+#I filtered out cancelled and diverted flights, then examined departure times associated with low delay values and also compared frequencies of no-delay departures to identify time periods that were less delay-prone.
+```
+
+```{r}
+Time.NoDelay <- dbGetQuery(conn,
+  "SELECT DepTime, Count(*) AS total
+  FROM flights
+  WHERE flights.Cancelled = 0 AND Diverted = 0 AND DepDelay == 0
+  GROUP BY DepTime#按出发时间分组
+  ORDER BY total")#按数量从小到大排序
+tail(Time.NoDelay)#取最后几行，也就是准点起飞次数最多的时间
+#总结：找no delay最常见时间
+#原因：
+#1.一天才刚开始没被打乱flight has not been discrupted
+#2.连锁延误还没累积 chain of delays x accumulated
+#3.机场资源早高峰很稳定morning rush hour is stable
+```
+
+# Best day of the week
+```{r}
+Day.LeastDelay <- dbGetQuery(conn,
+  "SELECT DayofWeek
+  FROM flights
+  WHERE flights.Cancelled = 0 AND Diverted = 0 AND DepDelay > 0
+  ORDER BY DepDelay")
+head(Day.LeastDelay)
+#最小正延误对应的是星期几
+```
+
+```{r}
+Day.NoDelay <- dbGetQuery(conn,
+  "SELECT DayofWeek, Count(*) AS total
+  FROM flights
+  WHERE flights.Cancelled = 0 AND Diverted = 0 AND DepDelay == 0 
+  GROUP BY DayofWeek
+  ORDER BY total")
+tail(Day.NoDelay)
+#最不容易 delay 的日子
+```
+
+### ===================== Q2b =====================
+#Do older planes suffer more delays?
+
+# Average DepDelay
+```{r}
+AvgDepDelay <- dbGetQuery(conn,
+ "SELECT planes.year AS planesyear, AVG(flights.DepDelay) AS AvgDelay
+ FROM planes JOIN flights USING (tailnum)
+ #你想研究“飞机年份”和“延误”的关系，必须把两张表连起来
+ WHERE flights.Cancelled = 0 AND flights.Diverted = 0
+ AND flights.DepDelay > 0
+ #在已经延误的航班里，不同飞机年份的平均延误程度
+ GROUP BY planesyear
+ ORDER BY planesyear")
+```
+
+```{r}
+AvgDepDelay$planesyear <- as.integer(AvgDepDelay$planesyear)
+AvgDepDelay <- na.omit(AvgDepDelay)
+AvgDepDelay <- AvgDepDelay[-1,]
+```
+
+```{r}
+plot(AvgDepDelay$planesyear, AvgDepDelay$AvgDelay,
+ pch = 4, xlab="Year Issued", ylab="Average Departure Delay in minutes",
+ main="Flights with departure delay")
+lines(AvgDepDelay$planesyear, AvgDepDelay$AvgDelay, col = "blue")#把点连成线，方便看趋势
+abline(lm(AvgDepDelay$AvgDelay ~ AvgDepDelay$planesyear), col = "red")#把这条回归线画到图上
+#如果红线是往下，表示：飞机年份越新平均 delay 越低也就是：越旧的飞机，delay 越高
+#看1970和2000就知道旧机延误严重
+```
+
+# Average ArrDelay
+```{r}
+AvgArrDelay <- dbGetQuery(conn,
+ "SELECT planes.year AS planesyear, AVG(flights.ArrDelay) AS AvgDelay
+ FROM planes JOIN flights USING (tailnum)
+ WHERE flights.Cancelled = 0 AND flights.Diverted = 0
+ AND flights.ArrDelay > 0
+ GROUP BY planesyear
+ ORDER BY planesyear")
+#旧飞机是否 arrival delay 也更严重
+```
+
+```{r}
+AvgArrDelay$planesyear <- as.integer(AvgArrDelay$planesyear)
+AvgArrDelay <- na.omit(AvgArrDelay)
+AvgArrDelay <- AvgArrDelay[-1,]
+```
+
+```{r}
+plot(AvgArrDelay$planesyear, AvgArrDelay$AvgDelay,
+ pch = 4, xlab="Year Issued", ylab="Average Arrival Delay in minutes",
+ main="Flights with arrival delay")
+lines(AvgArrDelay$planesyear, AvgArrDelay$AvgDelay, col = "blue")
+abline(lm(AvgArrDelay$AvgDelay ~ AvgArrDelay$planesyear), col = "red")
+#发现新机抵达延迟，起飞时大家新旧无分别（红线往上了一点）
+#怀疑理由：被派去更远的地方·，更挤的航线，所以落地时候排队堵车
+
+```
+
+### ===================== Q2c =====================
+```{r}
+library(ggplot2)
+```
+# Define a function to fit the model and get coefficients for a given year
+# Fit the logistic regression model
+```{r}
+#为什么要比较年份间的系数变化因为它想知道：同一个变量，在不同年份的影响是不是一样？
+
+#专门写一个函数处理某一年的数据
+#为什么要这样？因为我要对不同年份重复做同一件事
+get_coefficients <- function(year) {
+  df_year <- read.csv(paste0("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\", year, ".csv"))#为什么要检查diverted有没有两种价值呢01是正常的 0是不正常的模型没法学习
+  if (length(unique(df_year$Diverted)) < 2) {
+    print(paste("Data for year", year, "contains only one class in 'Diverted'. Skipping..."))
+    return(NULL)
+  }
+  model <- glm(Diverted ~ DepTime + CRSDepTime + CRSArrTime + Distance + UniqueCarrier, data = df_year, family = binomial)
+  return(data.frame(Year = year, Coefficients = coef(model)))#因为你要把每一年的模型系数整理成统一格式，后面才能合并
+  #coeff正就增加DepTime = 0.002起飞时间越往后，diverted 概率可能略微增加
+  #coeff负CarrierAA = -0.5相比基准航空公司，AA 的 diverted 倾向更低
+}
+  
+  
+  
+
+```
+
+# Apply the function to each chosen year
+```{r}
+coefficients_list <- lapply(c(2001,2004,2006), get_coefficients)#对 2001、2004、2006 这几个年份，一个一个去跑 get_coefficients
+coefficients <- do.call(rbind, coefficients_list)
+print(coefficients)
+#In my implementation, I focused on selected years that had both diverted and non-diverted cases so that the logistic model could be estimated properly.
+```
+
+# Convert the coefficients data frame to a format suitable for ggplot
+```{r}
+coefficients_long <- tidyr::gather(coefficients, key = "Variable", value = "Coefficient", -Year)#把数据转成长格式，方便 ggplot 作图
+
+ggplot(coefficients_long, aes(x = Year, y = Coefficient, color = Variable)) +
+  geom_line() +
+  labs(title = "Logistic Regression Coefficients Over Time",
+       x = "Year",
+       y = "Coefficient",
+       color = "Variable")
+```
+
+
+
+
+
+
+
+```
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
