@@ -29,11 +29,9 @@ Since the dataset is nearly balanced:
 
 Precision, Recall, and F1 are defined as:
 
-\[
-\text{Precision} = \frac{TP}{TP+FP}, \quad
-\text{Recall} = \frac{TP}{TP+FN}, \quad
-\text{F1} = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
-\]
+- **Precision** = TP / (TP + FP)
+- **Recall** = TP / (TP + FN)
+- **F1 Score** = 2 × (Precision × Recall) / (Precision + Recall)
 
 ---
 
