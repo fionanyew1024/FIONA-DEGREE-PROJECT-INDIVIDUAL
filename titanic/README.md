@@ -2,70 +2,72 @@
 
 ## Overview
 Predict whether a passenger survived the Titanic sinking based on demographic and travel information.  
-This is a classic binary classification problem used to practice data cleaning, feature engineering, and model evaluation.
+This is a binary classification task using the classic Titanic dataset.
 
-**File**:  `.Rmd`  
+**File**: `titanic.Rmd` (or `.ipynb`)
 
 ---
 
 ## Data
 - **Source**: Kaggle – Titanic: Machine Learning from Disaster  
-- **Files**:  
-  - `train.csv` – labeled training set (891 passengers)  
-  - `test.csv` – unlabeled test set (418 passengers)  
-  - `gender_submission.csv` – example submission format  
-- **Features**: Pclass, Sex, Age, SibSp, Parch, Fare, Embarked, etc.
+  [https://www.kaggle.com/c/titanic/data](https://www.kaggle.com/c/titanic/data)
+- **Files**: `train.csv`, `test.csv`
+- **Features**: Passenger class (Pclass), sex, age, siblings/spouses (SibSp), parents/children (Parch), fare, embarkation port, etc.
 
 ---
 
-## Methods
-
-### 1. Data Cleaning
-- Handle missing values:  
-  - `Age` → median / mean imputation (by Pclass or title)  
-  - `Embarked` → mode imputation  
-  - `Cabin` → dropped or converted to “has_cabin” flag  
-
-### 2. Feature Engineering
-- Extract titles (Mr, Mrs, Miss, Master, etc.) from `Name`  
-- Create family size = `SibSp + Parch + 1`  
-- Create “is alone” flag  
-- Bin Age and Fare into categories  
-
-### 3. Exploratory Analysis
-- Survival rate by gender, class, age group  
-- Visualizations: bar plots, heatmaps, pair plots  
-
-### 4. Modeling
-- Algorithms tested:  
-  - Logistic Regression  
-  - Random Forest  
-  - Gradient Boosting (XGBoost / LightGBM)  
-- Evaluation metrics: Accuracy, Precision, Recall, F1-score, ROC-AUC  
-- Cross-validation (e.g., 5-fold)
-
-### 5. Final Model
-- Best model: Random Forest (or XGBoost)  
-- Accuracy on validation set: ~82%  
-- Feature importance: Sex, Pclass, Age, Fare  
+## Exploratory Analysis
+- First-class passengers had the highest survival rate; third-class the lowest.
+- Women tended to have higher fares, reflecting higher-class cabins, and the “women-first” evacuation principle further increased their survival chances.
 
 ---
 
-## Results
-| Model | Accuracy (CV) | Kaggle Score |
-|-------|---------------|---------------|
-| Logistic Regression | 0.78 | 0.77 |
-| Random Forest | 0.82 | 0.79 |
-| XGBoost | 0.83 | 0.80 |
+## Evaluation Metrics
+Since the dataset is nearly balanced:
+- **F1 Score** – harmonic mean of precision and recall  
+- **ROC-AUC** – ability to distinguish between survived and deceased at different thresholds
 
-**Key insights**:  
-- Women and children had significantly higher survival rates.  
-- First-class passengers were more likely to survive.  
+Precision, Recall, and F1 are defined as:
+
+\[
+\text{Precision} = \frac{TP}{TP+FP}, \quad
+\text{Recall} = \frac{TP}{TP+FN}, \quad
+\text{F1} = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
+\]
+
+---
+
+## Models & Results
+
+| Model | F1 Score | ROC-AUC | Accuracy |
+|-------|----------|---------|----------|
+| K-Nearest Neighbours (KNN) | 0.585 | 0.671 | 0.698 |
+| Support Vector Machine (SVM) | 0.204 | 0.827 | 0.183 |
+| Neural Network (NN) | **0.770** | **0.881** | **0.814** |
+
+### KNN
+- Confusion Matrix: TP=46, TN=130, FP=57, FN=35  
+- Moderate performance, not suitable as a predictive model.
+
+### SVM
+- Confusion Matrix: TP=75, TN=144, FP=28, FN=21  
+- Better than KNN but still low F1 score.
+
+### Neural Network
+- Achieved the best F1 score (0.77) and ROC-AUC (0.881)  
+- Recommended as the final model for this classification task.
+
+---
+
+## Key Insights
+- Social class significantly affected survival – first-class passengers had the highest survival rate.
+- Gender also played a major role due to the “women-first” evacuation order.
+- Higher fares were associated with upper-class cabins and better survival odds.
 
 ---
 
 ## How to Run
 
-### Requirements (Python)
-```bash
-pip install pandas numpy matplotlib seaborn scikit-learn xgboost
+### Requirements (R)
+```r
+install.packages(c("tidyverse", "caret", "nnet", "e1071", "class", "pROC"))
