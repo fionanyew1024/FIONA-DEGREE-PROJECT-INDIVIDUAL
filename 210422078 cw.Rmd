@@ -1,0 +1,1213 @@
+---
+title: "Untitled"
+author: "NYEW JIA WEN`"
+date: "2025-03-12"
+output: html_document
+---
+
+```{r}
+setwd("~/ST3189 ML/cousework")
+```
+
+##Regression tasks
+
+```{r cars}
+library(glmnet)
+library(rpart)
+library(randomForest)
+library(caTools)# for train-test split
+library(leaps)#for backward elimination
+library(corrplot)
+library(MASS)
+library(car)#for vif（）to check multicollinearity
+```
+
+DATASET LINK: [link](https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset)
+just take day.csv as dataset
+[link](https://www.kaggle.com/datasets/vjchoudhary7/customer-segmentation-tutorial-in-python?resource=download)
+
+```{r}
+# Load RQ1 Dataset (day file for daily rentals)
+day <- read.csv("day.csv", stringsAsFactors = TRUE)
+summary(day)
+
+```
+
+```{r}
+# Converting relevant columns to factors for RQ1
+day$season <- as.factor(day$season) 
+day$yr <- as.factor(day$yr)          # yr: 0: 2011, 1: 2012
+day$mnth <- as.factor(day$mnth)      # mnth: 1: January, 2: February, ..., 12: December
+day$holiday <- as.factor(day$holiday) # holiday: 0: No, 1: Yes
+day$weekday <- as.factor(day$weekday) 
+day$workingday <- as.factor(day$workingday) # workingday: 0: No, 1: Yes
+day$weathersit <- as.factor(day$weathersit) # weathersit: 1: Clear, 2: Few clouds, 3: Cloudy, 4: Rainy
+
+# Check the data structure
+str(day)
+
+```
+
+
+##LINEAR REGRESSION MODEL FOR REGRESSION TASK
+
+```{r}
+# EDA part for RQ1-DAY 
+
+nuMeric.day <- day[, sapply(day, is.numeric)] 
+
+correlation <- cor(nuMeric.day, use = "complete.obs")
+
+corrplot(correlation, method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "grey")
+
+
+```
+
+##aim to find Backward Elimination RMSE ##RQ1
+
+```{r}
+# Train-Test Split (70% train, 30% test)
+set.seed(2025)
+split <- sample.split(day$cnt, SplitRatio = 0.7) 
+trainset <- subset(day, split == T)
+testset <- subset(day, split == F)
+
+```
+
+```{r}
+bikecountlinear <- lm(cnt ~ temp + atemp + hum + windspeed + season + weathersit + holiday + workingday, data = trainset)
+summary(bikecountlinear)
+
+```
+
+```{r}
+# Backward Elimination using step from MASS package
+#backward elimination to remove the least significant predictors step by step.
+BE <- step(bikecountlinear, direction = "backward")
+summary(BE)
+options(digits=3)
+coef(BE)
+
+```
+
+```{r}
+RMSE.BE.training <- sqrt(mean(residuals(BE)^2))
+RMSE.BE.training
+
+predict.BE.test <- predict(BE, newdata = testset)
+testset.error <- testset$cnt - predict.BE.test
+RMSE.BE.test <- sqrt(mean((testset.error)^2))
+print(paste("RMSE for Backward Elimination Test Set:", RMSE.BE.test))
+
+```
+
+##RQ1 10-fold CV with linear regression
+
+```{r}
+# Load necessary libraries
+library(caret)
+
+# Ensure train-test split and folds are created properly
+set.seed(2025)  # Set seed for reproducibility
+
+# Create 10 folds using the caret package for better split handling
+folds <- createFolds(day$cnt, k = 10, list = TRUE, returnTrain = TRUE)
+
+
+RMSE.train <- numeric(10)
+RMSE.test <- numeric(10)
+
+# 10FCV
+for (i in 1:10) {
+  trainset <- day[folds[[i]], ]  # Training data
+  testset <- day[-folds[[i]], ]  # Test data
+
+  bikecountlinear <- lm(cnt ~ temp + atemp + hum + windspeed + season + weathersit + holiday + workingday, data = trainset)
+
+  # RMSE-TRAINSET
+  train_pred <- predict(bikecountlinear, newdata = trainset)
+  RMSE.train[i] <- sqrt(mean((trainset$cnt - train_pred)^2))
+
+  # RMSE-TESTSET
+  test_pred <- predict(bikecountlinear, newdata = testset)
+  RMSE.test[i] <- sqrt(mean((testset$cnt - test_pred)^2))
+}
+
+# Compute the mean RMSE for both train and test sets
+avg.rmse.training <- mean(RMSE.train)
+avg.rmse.testing <- mean(RMSE.test)
+
+# Output the RMSE values
+print(paste("Mean RMSE for Training Set:", avg.rmse.training))
+print(paste("Mean RMSE for Testing Set:", avg.rmse.testing))
+
+# Calculate the standard error of RMSE for both train and test sets
+RMSE.train.se <- sd(RMSE.train) / sqrt(10)
+RMSE.test.se <- sd(RMSE.test) / sqrt(10)
+
+RMSE.train.se; RMSE.test.se
+
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(bikecountlinear)
+par(mfrow = c(1,1))
+
+```
+
+```{r}
+vif(BE)
+#No major multicollinearity issues are apparent since the VIF values are generally below 5
+
+```
+
+##Ridge and Lasso Regression ##RQ1 
+
+```{r}
+X <- day[, !(names(day) %in% c("cnt"))]  # All columns except target 'cnt'
+y <- day$cnt
+
+# Train-Test Split (70% train, 30% test)
+set.seed(2025)
+split <- sample.split(y, SplitRatio = 0.7)
+trainset <- subset(day, split == T)
+testset <- subset(day, split == F)
+
+# Prepare X for Ridge and Lasso models (standardize X)
+# Ensure all columns in X are numeric
+X.train <- as.data.frame(trainset[, !(names(trainset) %in% c("cnt"))])
+X.test <- as.data.frame(testset[, !(names(testset) %in% c("cnt"))])
+
+# Convert factors to numeric using model.matrix(because just now error for matrix problem)
+train.numeric.mtrx <- model.matrix(~., data = X.train)[, -1] 
+test.numeric.mtrx<- model.matrix(~., data = X.test)[, -1]  
+
+train.dt.mtrx <- as.matrix(train.numeric.mtrx)
+test.dt.mtrx<- as.matrix(test.numeric.mtrx)
+
+
+```
+# Ridge Regression -------------------------------------
+```{r}
+grid <- 10^seq(10, -2, length = 100)
+ridge.model <- glmnet(train.dt.mtrx, trainset$cnt, alpha = 0, lambda = grid)
+cv.ridge <- cv.glmnet(train.dt.mtrx, trainset$cnt, alpha = 0)
+plot(cv.ridge)
+
+```
+
+```{r}
+bl.ridge <- cv.ridge$lambda.min
+ridge.predictions <- predict(ridge.model, s = bl.ridge, newx = test.dt.mtrx)
+RMSE.ridge <- sqrt(mean((ridge.predictions - testset$cnt)^2))
+print(paste("RMSE for Ridge Regression:", RMSE.ridge))
+```
+# Lasso Regression
+```{r}
+lA.model <- glmnet(train.dt.mtrx, trainset$cnt, alpha = 1, lambda = grid)
+cv.lA <- cv.glmnet(train.dt.mtrx, trainset$cnt, alpha = 1)
+plot(cv.lA)
+
+```
+
+```{r}
+bl.lA <- cv.lA$lambda.min
+lA.predictions <- predict(lA.model, s = bl.lA, newx = test.dt.mtrx)
+RMSE.lA <- sqrt(mean((lA.predictions - testset$cnt)^2))
+print(paste("RMSE for Lasso Regression:", RMSE.lA))
+```
+
+##10-fold Cross Validation for Ridge and Lasso Regression 
+
+```{r}
+# 10-Fold Cross Validation (Train-Test Split inside CV)
+set.seed(2025)  
+folds <- createFolds(y, k = 10, list = T, returnTrain = T)
+
+
+RMSE.ridge.train <- numeric(10)
+RMSE.ridge.test <- numeric(10)
+RMSE.lA.train <- numeric(10)
+RMSE.lA.test <- numeric(10)
+
+# 10-Fold CV loop
+for (i in 1:10) {
+  
+  trainset <- day[folds[[i]], ]  # Training data
+  testset <- day[-folds[[i]], ]  # Test data
+  
+  # Prepare X for Ridge and Lasso models (standardize X)
+  X.train <- as.data.frame(trainset[, !(names(trainset) %in% c("cnt"))])
+  X.test <- as.data.frame(testset[, !(names(testset) %in% c("cnt"))])
+
+  # Convert factors to numeric using model.matrix
+  train.numeric.mtrx <- model.matrix(~., data = X.train)[, -1] 
+  test.numeric.mtrx <- model.matrix(~., data = X.test)[, -1]  
+
+  train.dt.mtrx <- as.matrix(train.numeric.mtrx)
+  test.dt.mtrx <- as.matrix(test.numeric.mtrx)
+
+  cv.ridge <- cv.glmnet(train.dt.mtrx, trainset$cnt, alpha = 0)  
+  bl.ridge <- cv.ridge$lambda.min 
+  ridge.predictions.train <- predict(cv.ridge, s = bl.ridge, newx = train.dt.mtrx)
+  RMSE.ridge.train[i] <- sqrt(mean((ridge.predictions.train - trainset$cnt)^2))  # RMSE for training set
+  
+  ridge.predictions.test <- predict(cv.ridge, s = bl.ridge, newx = test.dt.mtrx)
+  RMSE.ridge.test[i] <- sqrt(mean((ridge.predictions.test - testset$cnt)^2))  # RMSE-test set
+  
+  # Lasso Regression (alpha = 1 for Lasso)
+  cv.lA<- cv.glmnet(train.dt.mtrx, trainset$cnt, alpha = 1)  
+  bl.lA <- cv.lA$lambda.min  
+  lA.predictions.train <- predict(cv.lA, s = bl.lA, newx = train.dt.mtrx)
+  RMSE.lA.train[i] <- sqrt(mean((lA.predictions.train - trainset$cnt)^2))  # RMSE for training set
+  
+  lA.predictions.test <- predict(cv.lA, s = bl.lA, newx = test.dt.mtrx)
+  RMSE.lA.test[i] <- sqrt(mean((lA.predictions.test - testset$cnt)^2))  # RMSE for test set
+}
+
+```
+
+```{r}
+# Compute the mean RMSE for both Ridge and Lasso models across all 10 folds
+RMSE.ridge.train.mean <- mean(RMSE.ridge.train)
+RMSE.ridge.test.mean <- mean(RMSE.ridge.test)
+RMSE.lA.train.mean <- mean(RMSE.lA.train)
+RMSE.lA.test.mean <- mean(RMSE.lA.test)
+
+# Output the results
+cat("Mean RMSE for Ridge Regression (Trainset):", RMSE.ridge.train.mean, "\n")
+cat("Mean RMSE for Ridge Regression (Testset):", RMSE.ridge.test.mean, "\n")
+cat("Mean RMSE for Lasso Regression (Trainset):", RMSE.lA.train.mean, "\n")
+cat("Mean RMSE for Lasso Regression (Testset):", RMSE.lA.test.mean, "\n")
+
+```
+
+```{r}
+#Ridge
+bl.ridge <- cv.ridge$lambda.min
+print(paste("Best Lambda for Ridge Regression:", bl.ridge))
+
+# Lasso
+bl.lA <- cv.lA$lambda.min
+print(paste("Best Lambda for Lasso Regression:", bl.lA))
+
+```
+
+###CART MODEL-REGRESSION TASK
+```{r}
+
+library(rpart)
+library(rpart.plot)
+
+
+set.seed(2025)
+
+# prePrepare (using same predictors as Linear Regression)
+X <- day[, c("temp", "atemp", "hum", "windspeed", "season", "weathersit", "holiday", "workingday")]  # Select predictors
+y <- day$cnt  # The target variable (total daily bike rentals)
+
+# Train-Test Split (70% train, 30% test)
+set.seed(2025)
+split <- sample.split(y, SplitRatio = 0.7)
+trainset <- subset(day, split == T)
+testset <- subset(day, split == F)
+
+```
+
+```{r}
+# Fit CART for regression using selected predictors
+bikecountcart<- rpart(cnt ~ temp + atemp + hum + windspeed + season + weathersit + holiday + workingday, 
+                    data = trainset, 
+                    method = "anova", 
+                    control = rpart.control(minsplit = 2, cp = 0))
+
+```
+
+```{r}
+# Print CP table to identify pruning criteria
+printcp(bikecountcart)
+```
+```{r}
+cp.opt <- bikecountcart$cptable[which.min(bikecountcart$cptable[, "xerror"]), "CP"]
+cp.opt
+```
+
+```{r}
+#choose optimal cp value from printcp
+cp.opt <- 0.00601  
+cart.pruned <- prune(bikecountcart, cp = cp.opt)
+
+
+rpart.plot(cart.pruned, nn = T, main = "Pruned CART Model")
+
+
+cart.predictions <- predict(cart.pruned, newdata = testset)
+
+```
+
+```{r}
+
+RMSE.cart <- sqrt(mean((cart.predictions - testset$cnt)^2))
+print(paste("RMSE for CART Regression (Test Set):", RMSE.cart))
+
+```
+
+```{r}
+library(caret)
+library(rpart)
+
+set.seed(2025)
+folds <- createFolds(day$cnt, k = 10)
+
+RMSE.cart.train <- numeric(10)
+RMSE.cart.test <- numeric(10)
+
+for (i in 1:10) {
+  trainset <- day[folds[[i]], ]
+  testset <- day[-folds[[i]], ]
+  
+  # Train full tree
+  bikecountcart<- rpart(cnt ~ temp + atemp + hum + windspeed + season + weathersit + holiday + workingday,
+                      data = trainset,
+                      method = "anova",
+                      control = rpart.control(minsplit = 2, cp = 0))
+  
+  cp.opt <- bikecountcart$cptable[which.min(bikecountcart$cptable[, "xerror"]), "CP"]
+  cart.pruned <- prune(bikecountcart, cp = cp.opt)
+  
+  # Predictions
+  pred.train <- predict(cart.pruned, newdata = trainset)
+  pred.test <- predict(cart.pruned, newdata = testset)
+  
+  # RMSE
+  RMSE.cart.train[i] <- sqrt(mean((trainset$cnt - pred.train)^2))
+  RMSE.cart.test[i] <- sqrt(mean((testset$cnt - pred.test)^2))
+}
+
+# Average RMSE
+mean(RMSE.cart.train)
+mean(RMSE.cart.test)
+
+```
+
+
+##RANDOM FOREST MODEL FOR REGRESSION TASK
+
+```{r}
+##Error: The number of rows in X.train.matrix does not match the length of the response variable(settled)
+# Load necessary libraries
+library(randomForest)
+
+# Prepare the data (same as used in other models)
+X <- day[, c("temp", "atemp", "hum", "windspeed", "season", "weathersit", "holiday", "workingday")]  # Select predictors
+y <- day$cnt  # The target variable (total daily bike rentals)
+
+# Train-Test Split (70% train, 30% test)
+set.seed(2025)
+split <- sample.split(y, SplitRatio = 0.7)
+trainset <- subset(day, split == T)
+testset <- subset(day, split == F)
+
+# Ensure training and testing sets are in the correct format (no need for model.matrix transformation here for Random Forest)
+X.train <- trainset[, c("temp", "atemp", "hum", "windspeed", "season", "weathersit", "holiday", "workingday")]
+X.test <- testset[, c("temp", "atemp", "hum", "windspeed", "season", "weathersit", "holiday", "workingday")]
+
+
+bikecountrf<- randomForest(x = X.train, y = trainset$cnt, ntree = 500, importance = TRUE)
+
+rf.pre <- predict(bikecountrf, newdata = X.test)
+
+# RMSE-TESTSET
+RMSE.rf <- sqrt(mean((rf.pre - testset$cnt)^2))
+print(paste("RMSE for Random Forest Regression (Test Set):", RMSE.rf))
+
+print("Feature Importance for Random Forest:")
+print(importance(bikecountrf))
+
+```
+
+```{r}
+# Display the feature importance
+var.impt <- importance(bikecountrf)
+View(var.impt)
+varImpPlot(bikecountrf,type=1)
+```
+## CLASSIFICATION TASKS (LOGISTIC REGRESSION, KNN, SVM,NN) - SUPERVISED LEARNING
+DATASET LINK: [link](https://www.kaggle.com/c/titanic/data)
+just take train as dataset
+
+```{r}
+# Load required libraries
+library(caret)
+library(pROC)
+library(ggplot2)
+library(nnet)
+library(e1071)
+library(class)
+library(data.table)
+library(caTools)
+library(reshape2)
+# Load dataset
+tit <- fread("train.csv")
+summary(tit)
+#age has lots na
+```
+
+##Logistic Regression
+```{r}
+
+library(data.table)
+library(caTools)
+library(pROC)
+library(ggplot2)
+library(reshape2)
+
+# Function to compute classification metrics
+compute.metrics <- function(cm) {
+  TruePo <- cm[2,2]#实际是 1，预测也是 1 python要加1
+  FalsePo <- cm[1,2]#实际是 0，但预测成 1
+  FalseNeg <- cm[2,1]#实际是 1，但预测成 0
+  TrueNeg <- cm[1,1]#实际是 0，预测也是 0
+  
+  accuracy <- (TruePo + TrueNeg) / sum(cm)
+  precision <- TruePo / (TruePo + FalsePo)
+  recall <- TruePo / (TruePo + FalseNeg)
+  F1 <- 2 * (precision * recall) / (precision + recall)
+  
+  return(list(Accuracy = accuracy, Precision = precision, Recall = recall, F1.Score = F1))
+}
+
+
+```
+
+```{r}
+tit$Survived <- factor(tit$Survived)
+tit$Pclass <- factor(tit$Pclass)
+tit$Sex <- factor(tit$Sex, levels = c("male", "female"))
+tit$Embarked <- factor(tit$Embarked)
+
+
+tit$Age[is.na(tit$Age)] <- median(tit$Age, na.rm = T)
+tit$Fare[is.na(tit$Fare)] <- median(tit$Fare, na.rm = T)
+tit <- na.omit(tit)#所以这一步可能会删掉大量资料。危险
+#最好先只保留这些变量，再处理缺失。
+
+
+set.seed(2025)
+train <- sample.split(Y = tit$Survived, SplitRatio = 0.7)
+trainset <- subset(tit, train == T)
+testset <- subset(tit, train == F)
+
+# Logistic Regression 
+logistic<- glm(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked, 
+                      family = binomial, data = trainset)
+summary(logistic)
+
+# Compute Odds Ratios
+#因为 logistic regression 的系数原本是在 log-odds 尺度上，不直观。
+#所以你把它 exponentiate，变成 odds ratio。
+OR.logistic <- exp(coef(logistic))
+#OR > 1：这个变量增加，生还 odds 上升
+#OR < 1：这个变量增加，生还 odds 下降
+OR.CI.logistic <- exp(confint(logistic))#把置信区间也转成 odds ratio 的尺度，方便解释
+
+# Predictions
+prob.test <- predict(logistic, newdata = testset, type = 'response')
+#type = "response" 会给你 预测概率，范围在 0 到 1。
+predict.test <- ifelse(prob.test > 0.5, 1, 0)
+
+# Convert predictions to factor
+predict.test <- factor(predict.test, levels = c(0,1))#方便后面做 confusion matrix。
+
+# Confusion Matrix
+cm <- table(testset$Survived, predict.test)#建立混淆矩阵：行 = 实际值，列 = 预测值
+print(cm)
+
+# Compute Metrics Using Function
+metrics <- compute.metrics(cm)
+print(metrics)
+
+##Error :cannot use logistic regression
+```
+
+##KNN
+```{r}
+# Convert categorical variables to numeric for KNN
+#因为 KNN 不能直接处理 factor/categorical variable，所以你先把类别变量转成 numeric。
+#更好的做法：用 dummy variables / one-hot encoding 会更好
+tit$Sex <- as.numeric(tit$Sex)
+tit$Embarked <- as.numeric(tit$Embarked)
+tit$Pclass <- as.numeric(tit$Pclass)
+
+
+set.seed(2025)
+train <- sample.split(Y = tit$Survived, SplitRatio = 0.7)
+trainset <- subset(tit, train == TRUE)
+testset <- subset(tit, train == FALSE)
+
+
+train.X <- trainset[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"), with = FALSE]
+test.X <- testset[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"), with = FALSE]
+train.Y <- trainset$Survived
+test.Y <- testset$Survived
+#这里要注意什么
+#KNN 非常依赖距离，所以通常要先 standardize / normalize。
+#你这里没有做 scaling，这会让像 Fare、Age 这种数值范围大的变量主导距离计算。
+
+# Run KNN model
+set.seed(2025)
+k <- 5 #这是一个常见起点，后续可以通过交叉验证调参，不然老师/面试官可能会问：为什么是 5，不是 3 或 7？
+knn.pred <- knn(train.X, test.X, train.Y, k = k)
+
+
+cm <- table(test.Y, knn.pred)
+print(cm)
+
+
+metrics <- compute.metrics(cm)
+print(metrics)
+
+
+roc.tt <- roc(as.numeric(test.Y), as.numeric(knn.pred))#problem：KNN 的 ROC 最好用“概率”而不是硬分类结果
+plot(roc.test, col = "blue", main = "ROC Curve - KNN")#problem：这里应该选roc.tt的
+auc.tt <- auc(roc.tt)
+cat("AUC:", auc.tt, "\n")
+
+
+```
+
+```{r}
+# Heatmap CM
+#melt：把 table 转成长格式 dataframe
+cm.melt <- melt(cm)
+colnames(cm.melt) <- c("True Label", "Predicted Label", "Count")
+ggplot(cm.melt, aes(x = `Predicted Label`, y = `True Label`, fill = Count)) + 
+  geom_tile() + #geom_tile()->画方块热图
+  geom_text(aes(label = Count), color = "white", size = 5) + #geom_text(aes(label = Count)):把数量写在格子里
+  scale_fill_gradient(low = "lightblue", high = "darkblue") + 
+  labs(title = "Confusion Matrix - KNN", x = "Predicted labels", y = "True labels") + 
+  theme_minimal()
+
+
+```
+
+```{r}
+cat("\nK-Nearest Neighbors (KNN)\n")
+cat("F1 Score:", round(metrics$F1.Score, 3), "\n")
+cat("ROC_AUC Score:", round(auc.test, 3), "\n")#这一行应该会报错：auc.tt
+cat("Accuracy:", round(metrics$Accuracy, 3), "\n")
+```
+
+##SVM
+```{r}
+# Convert categorical variables to numeric for SVM
+#跟 KNN 一样，把分类变量先转成数值，好让 SVM 可以使用。
+#as.numeric  还是会有“类别被强行赋顺序”的问题。通常 dummy encoding 会更稳。
+tit$Sex <- as.numeric(tit$Sex)
+tit$Embarked <- as.numeric(tit$Embarked)
+tit$Pclass <- as.numeric(tit$Pclass)
+
+
+set.seed(2025)
+train <- sample.split(Y = tit$Survived, SplitRatio = 0.7)
+trainset <-subset(tit, train == T)
+testset <- subset(tit, train == F)
+
+# Define training and test data
+train.X <- trainset[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"), with = FALSE]
+test.X <- testset[, c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"), with = FALSE]
+train.Y <- trainset$Survived
+test.Y <- testset$Survived
+
+# SVM Model
+set.seed(2025)
+svmm<- svm(x = train.X, y = train.Y, kernel = "radial", gamma = 1, cost = 1, probability = T)
+#gamma 大，边界更复杂；gamma 小，边界更平滑。
+#radial:表示这个分类边界不是简单直线，而是可以做非线性分类
+#cost 大，模型更想把训练集分对；但可能更容易 overfit
+summary(svmm)
+
+# Hyperparameter tuning
+set.seed(2025)
+train.svm <- cbind(train.X, Survived = train.Y)
+
+tune.out <- tune(svm, Survived ~ ., data = train.svm, kernel = "radial",
+                 ranges = list(cost = c(0.1, 1, 10, 100, 1000), gamma = c(0.5, 1, 2, 3, 4)))
+#让他去测很多
+summary(tune.out)
+
+
+best.svm <- tune.out$best.model#保存最佳模型
+
+#后面预测时并没有用 best.svm，而是还在用原本的 svmm。这就有点浪费了调参步骤。
+# Predictions
+svm.pred <- predict(svmm, test.X, probability = T)#predict(best.svm, test.X, probability = TRUE)
+predicted.probs <- attr(svm.pred, "probabilities")[,2]#从预测结果里把“属于 class 1”的概率取出来。
+predict.class <- ifelse(predicted.probs > 0.5, 1, 0)
+
+
+predict.class <- factor(predict.class, levels = c(0,1))
+
+
+```
+
+```{r}
+# Confusion Matrix#solve error
+if (length(test.Y) == length(predict.class)) {
+  cm <- table(test.Y, predict.class)
+  print(cm)
+} else {
+  cat("Error: Mismatched lengths - test.Y:", length(test.Y), " predict.class:", length(predict.class), "\n")
+}
+
+print(cm)#这样还是可能报错。所以这段逻辑不够完整。
+
+# Compute Metrics Using Function
+metrics <- compute.metrics(cm)
+print(metrics)
+
+
+```
+
+```{r}
+# ROC Curve and AUC
+#把真实标签转 numeric，然后算 ROC / AUC。
+# Ensure test.Y is numeric and check lengths
+test.Y.numeric <- as.numeric(as.character(test.Y))
+
+if (length(test.Y.numeric) == length(predicted.probs) && all(!is.na(predicted.probs))) {
+  roc.tt <- roc(test.Y.numeric, predicted.probs)
+  plot(roc.test, col = "blue", main = "ROC Curve - SVM")#应该是roc.tt
+  auc.tt <- auc(roc.tt)
+  cat("AUC:", auc.tt, "\n")
+} else {
+  cat("Error: Mismatched lengths or missing values - test.Y:", length(test.Y.numeric), 
+      " predicted.probs:", length(predicted.probs), "\n")
+}
+
+plot(roc.tt, col = "blue", main = "ROC Curve - SVM")
+auc.tt <- auc(roc.tt)
+cat("AUC:", auc.tt, "\n")
+
+
+```
+
+```{r}
+# Heatmap cm
+cm.melt <- melt(cm)
+colnames(cm.melt) <- c("True Label", "Predicted Label", "Count")
+ggplot(cm.melt, aes(x = `Predicted Label`, y = `True Label`, fill = Count)) + 
+  geom_tile() + 
+  geom_text(aes(label = Count), color = "white", size = 5) + 
+  scale_fill_gradient(low = "lightblue", high = "darkblue") + 
+  labs(title = "Confusion Matrix - SVM", x = "Predicted labels", y = "True labels") + 
+  theme_minimal()
+
+
+```
+
+```{r}
+cat("\nSupport Vector Machine (SVM)\n")
+cat("F1 Score:", round(metrics$F1.Score, 3), "\n")
+cat("ROC_AUC Score:", round(auc.test, 3), "\n")#这里应该要roc.tt
+cat("Accuracy:", round(metrics$Accuracy, 3), "\n")
+```
+
+##NN
+```{r}
+library(data.table)
+library(neuralnet)
+library(pROC)
+
+#Data preprocessing
+tit$Age[is.na(tit$Age)] <- median(tit$Age, na.rm = TRUE)
+tit$Fare[is.na(tit$Fare)] <- median(tit$Fare, na.rm = TRUE)
+tit <- tit[!is.na(Embarked), ]#比前面好 也更合理
+
+# select feature
+tit <- tit[, .(Survived, Pclass, Sex, Age, SibSp, Parch, Fare, Embarked)]#只保留神经网络要用的变量，避免无关列干扰。
+
+#先把类别变量设成 factor，方便后面做 dummy variable。
+tit$Survived <- as.factor(tit$Survived)
+tit$Pclass <- as.factor(tit$Pclass)
+tit$Sex <- as.factor(tit$Sex)
+tit$Embarked <- as.factor(tit$Embarked)
+
+# Create dummy variables
+tit$Pclass1 <- ifelse(tit$Pclass == 1, 1, 0)#是否为一等舱
+tit$Pclass2 <- ifelse(tit$Pclass == 2, 1, 0)#没有单独建 Pclass3，因为它自动当 baseline
+tit$SexMale <- ifelse(tit$Sex == "male", 1, 0)#没有单独建 female，因为 female 当 baseline
+tit$EmbarkedC <- ifelse(tit$Embarked == "C", 1, 0)#是否从 C 港口上船
+tit$EmbarkedQ <- ifelse(tit$Embarked == "Q", 1, 0)#没有单独建 S，表示 S 当 baseline
+
+# Normalize numerical 
+#把数值变量做 min-max normalization，压到 0 到 1 之间。
+#因为：神经网络对变量尺度比较敏感。如果不缩放，某些数值大的变量会影响训练。
+tit$Age <- (tit$Age - min(tit$Age)) / (max(tit$Age) - min(tit$Age))
+tit$Fare <- (tit$Fare - min(tit$Fare)) / (max(tit$Fare) - min(tit$Fare))
+tit$SibSp <- (tit$SibSp - min(tit$SibSp)) / (max(tit$SibSp) - min(tit$SibSp))
+tit$Parch <- (tit$Parch - min(tit$Parch)) / (max(tit$Parch) - min(tit$Parch))
+
+# Prepare input data
+input_data <- tit[, .(Age, Fare, SibSp, Parch, Pclass1, Pclass2, SexMale, EmbarkedC, EmbarkedQ)]
+target <- tit$Survived
+
+# Convert target variable to numeric
+target <- as.numeric(as.character(target))
+
+```
+
+```{r}
+set.seed(2025)
+nn <- neuralnet(
+  target ~ Age + Fare + SibSp + Parch + Pclass1 + Pclass2 + SexMale + EmbarkedC + EmbarkedQ,
+  data = input_data,#有bug
+  hidden = 2,  # 1个隐藏层，2个节点
+  linear.output = FALSE,#因为这是分类问题，不是回归，所以输出层不是线性的
+  err.fct = "ce",#因为这是分类问题，不是回归，所以输出层不是线性的
+  act.fct = "logistic"#因为这是分类问题，不是回归，所以输出层不是线性的
+)
+
+#但是公式左边的 target 不在 input_data 里。这通常会报错，因为模型找不到 target 这列。
+#应该nn_data <- cbind(input_data, target = target)
+#data = nn_data
+#你这里是直接拿 整个 input_data 来预测。
+#也就是说，你没有做 NN 专属的 train/test split。
+#这样会导致：你是在训练资料上预测自己结果会偏乐观,不能公平跟前面的 logistic / KNN / SVM 比
+# Plot neural network structure
+plot(nn)
+
+
+```
+
+```{r}
+# predict
+prob <- compute(nn, input_data)
+predicted <- ifelse(prob$net.result > 0.5, 1, 0)
+
+
+cm <- table(target, predicted)
+print(cm)
+
+# Calculate performance metrics
+TruePo <- cm[2, 2]
+FalsePo <- cm[1, 2]
+FalseNeg <- cm[2, 1]
+TrueNeg <- cm[1, 1]
+
+accuracy <- (TruePo + TrueNeg) / sum(cm)
+precision <- TruePo / (TruePo + FalsePo)
+recall <- TruePo / (TruePo + FalseNeg)
+F1 <- 2 * (precision * recall) / (precision + recall)
+
+# Output
+cat("Neural Network Performance:\n")
+cat("Accuracy:", round(accuracy, 3), "\n")
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1 Score:", round(F1, 3), "\n")
+
+```
+
+```{r}
+# ROC curve (with fixes)
+prob_vector <- prob$net.result[, 1]  # Extract numeric vector from matrix
+rocobjective <- roc(target, prob_vector, direction = "<")  # Set direction explicitly
+plot(rocobjective, col = "blue", main = "ROC Curve")
+aucval <- auc(rocobjective)
+cat("AUC:", round(aucval, 3), "\n")
+```
+##EDA-classification
+```{r}
+# Barplot of survival
+ggplot(tit, aes(x = Survived)) +
+  geom_bar(aes(fill = Survived), width = 0.7) +
+  labs(title = "Survival Count", x = "Survived", y = "Count") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_minimal()
+
+```
+
+```{r}
+# Pclass and survival relationship
+ggplot(tit, aes(x = Pclass, fill = Survived)) +
+  geom_bar(position = "fill", width = 0.7) +
+  labs(title = "Survival Rate by Pclass", x = "Pclass", y = "Survival Rate") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_minimal()
+
+```
+
+```{r}
+
+ggplot(tit, aes(x = Age, y = Fare, color = Sex)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Age vs Fare by Sex", x = "Age", y = "Fare") +
+  theme_minimal()
+
+```
+
+
+## UNSUPERVISED LEARNING TASKS (PCA, K-MEANS CLUSTERING, HIERARCHICAL CLUSTERING)
+Dataset Link:
+[link](https://www.kaggle.com/datasets/vjchoudhary7/customer-segmentation-tutorial-in-python?resource=download)
+```{r}
+df <- read.csv("Mall_Customers.csv")
+head(df)
+
+```
+
+```{r}
+summary(df)
+```
+##EDA 
+```{r}
+library(ggplot2)
+library(corrplot)
+library(GGally)
+library(gridExtra)
+
+
+
+# Data manipulation 
+# Converting 'Gender' column to numeric (Male=0, Female=1)
+df$Gender <- ifelse(df$Gender == "Male", 0, 1)
+
+# Scaling 
+df.scaling <- df[, c("Age", "Annual.Income..k..", "Spending.Score..1.100.")]
+df.scaling <- scale(df.scaling)
+
+# Handling missing values 
+for(i in 1:ncol(df.scaling)){
+  df.scaling[is.na(df.scaling[,i]), i] <- mean(df.scaling[,i], na.rm = T)
+}
+
+sum(is.na(df.scaling))  
+
+# Assign the 'CustomerID' column as the row names for better data handling
+rownames(df.scaling) <- df$CustomerID
+
+# Remove the 'CustomerID' column as it's not needed for clustering
+df.scaling <- as.data.frame(df.scaling)
+
+```
+
+```{r}
+# **1. Correlation Matrix with Heatmap**
+cor_matrix <- cor(df.scaling)
+corrplot(cor_matrix, method = "color", type = "upper", 
+         tl.cex = 0.8, tl.col = "black", title = "Correlation Matrix", 
+         addCoef.col = "white", number.cex = 0.8)
+
+
+```
+
+```{r}
+# **2. Boxplots for Distribution Visualization**
+p1 <- ggplot(df, aes(x = "", y = Age)) + 
+      geom_boxplot(fill = "skyblue", color = "black") + 
+      ggtitle("Boxplot: Age") + 
+      theme_minimal()
+
+p2 <- ggplot(df, aes(x = "", y = Annual.Income..k..)) + 
+      geom_boxplot(fill = "skyblue", color = "black") + 
+      ggtitle("Boxplot: Annual Income (k$)") + 
+      theme_minimal()
+
+p3 <- ggplot(df, aes(x = "", y = Spending.Score..1.100.)) + 
+      geom_boxplot(fill = "skyblue", color = "black") + 
+      ggtitle("Boxplot: Spending Score (1-100)") + 
+      theme_minimal()
+
+# **Displaying the Boxplots in a Grid**
+grid.arrange(p1, p2, p3, ncol = 3, nrow = 1)
+
+
+```
+
+```{r}
+# **3. Pairplot (Scatterplot Matrix)**
+pairplot <- ggpairs(df.scaling, 
+                    title = "Pairplot of Numerical Features", 
+                    aes(color = factor(df$Gender), alpha = 0.5))
+
+# Print the Pairplot (separate print, as ggpairs is a grid object)
+print(pairplot)
+```
+
+##PCA
+```{r}
+
+out <- prcomp(df.scaling, scale = T)
+out$rotation
+
+out$x
+
+
+out$sdev  
+pr.var <- out$sdev^2  
+pve <- pr.var / sum(pr.var)  
+```
+
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Standardize the data 
+df.scaling <- scale(df[, c("Age", "Annual.Income..k..", "Spending.Score..1.100.")])
+
+
+out <- prcomp(df.scaling, scale = T)
+
+
+pr.var <- out$sdev^2
+
+pve <- pr.var / sum(pr.var)
+
+# Create Scree Plot
+ggplot(data = data.frame(PC = 1:length(pve), Variance = pve), aes(x = PC, y = Variance)) +
+  geom_point() +
+  geom_line() +
+  xlab("Principal Component") +
+  ylab("Proportion of Variance Explained") +
+  ggtitle("Scree Plot: PCA") +
+  theme_minimal()
+
+```
+
+```{r}
+# Print the standard deviations and calculate the proportion of variance explained
+pr.var <- out$sdev^2
+pve <- pr.var / sum(pr.var)
+
+
+pve
+
+```
+
+
+```{r}
+# **PCA Biplot**
+biplot(out, scale = 0, cex = 0.7, col = "black", 
+       xlab = "PC1", ylab = "PC2")
+# Add arrows and labels only for the most significant variables prevent messy
+text(out$rotation[,1], out$rotation[,2], labels = rownames(out$rotation), 
+     col = "red", cex = 0.6, pos = 3)
+```
+
+##KNN
+```{r}
+library(ggplot2)
+library(cluster)
+library(dplyr)
+
+#Perform K-Means Clustering with different numbers of clusters (1 to 9)
+inertia <- numeric(length = 9)  # To store inertia (sum of squared errors)
+K <- 1:9
+
+# Set the seed before running K-means
+set.seed(2025)  
+
+# Loop to calculate inertia for each value of K (1 to 9)
+for (i in K) {
+  kmeans.model <- kmeans(df.scaling, centers = i, nstart = 25)  # nstart ensures good initialization
+  inertia[i] <- kmeans.model$tot.withinss
+}
+
+```
+
+```{r}
+# Plot the Elbow Method (Scree Plot)
+plot(K, inertia, type = "b", pch = 19, col = "blue", 
+     main = "Scree Plot: Elbow Method", xlab = "Number of Clusters", ylab = "Sum of Squared Error", 
+     cex.lab = 1.2, cex.main = 1.5)
+abline(v = 3, col = "red", lty = 2)  # The elbow at K=3 is marked with a red dashed line
+
+```
+
+```{r}
+# Fit  (K=3)
+kmeans.model <- kmeans(df.scaling, centers = 3, nstart = 25)  # K=3 based on elbow method
+
+
+kmeans.df <- as.data.frame(df)
+kmeans.df$kclusters <- as.factor(kmeans.model$cluster)  # Add cluster labels as a new column
+
+# Preview the top rows of the data with cluster labels
+head(kmeans.df)
+
+
+```
+
+```{r}
+# Plotting Boxplots for each variable against the clusters
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+
+# Boxplot for Age vs K-Means clusters
+boxplot(kmeans.df$Age ~ kmeans.df$kclusters, 
+        main = "Age vs kclusters", 
+        xlab = "K-Clusters", ylab = "Age", 
+        col = "lightblue", border = "black")
+
+# Boxplot for Annual Income (k$) vs K-Means clusters
+boxplot(kmeans.df$Annual.Income..k.. ~ kmeans.df$kclusters, 
+        main = "Annual Income (k$) vs kclusters", 
+        xlab = "K-Clusters", ylab = "Annual Income (k$)", 
+        col = "lightgreen", border = "black")
+
+# Boxplot for Spending Score vs K-Means clusters
+boxplot(kmeans.df$Spending.Score..1.100. ~ kmeans.df$kclusters, 
+        main = "Spending Score vs kclusters", 
+        xlab = "K-Clusters", ylab = "Spending Score", 
+        col = "lightpink", border = "black")
+
+# Display the plots
+par(mfrow = c(1, 1))  
+
+
+```
+
+```{r}
+#summary
+kmeans.table <- kmeans.df %>% group_by(kclusters) %>% summarise_all(list(mean = ~mean(.)))
+print(kmeans.table)
+```
+
+##HAC
+```{r}
+
+library(ggplot2)
+library(cluster)
+library(dendextend)
+
+# Perform hierarchical clustering using different linkage methods
+comp <- hclust(dist(df.scaling), method = "complete")
+avg <- hclust(dist(df.scaling), method = "average")
+sin<- hclust(dist(df.scaling), method = "single")
+cen <- hclust(dist(df.scaling), method = "centroid")
+ward <- hclust(dist(df.scaling), method = "ward.D2")
+
+# Improved Dendrogram  with Coloring and Cutting at k=3
+par(mfrow = c(3, 2))  # Adjust the layout for multiple plots
+
+# Plot dendrograms with better labels and color coding for clusters
+plot(comp, main = "Complete Linkage", xlab = "", sub = "", cex = 0.8)
+rect.hclust(comp, k = 3, border = 2:4) 
+
+plot(avg, main = "Average Linkage", xlab = "", sub = "", cex = 0.8)
+rect.hclust(avg, k = 3, border = 2:4)  
+
+plot(sin, main = "Single Linkage", xlab = "", sub = "", cex = 0.8)
+rect.hclust(sin, k = 3, border = 2:4)  
+
+plot(cen, main = "Centroid Linkage", xlab = "", sub = "", cex = 0.8)
+rect.hclust(cen, k = 3, border = 2:4)  
+
+plot(ward, main = "Ward Linkage", xlab = "", sub = "", cex = 0.8)
+rect.hclust(ward, k = 3, border = 2:4)  
+par(mfrow = c(1, 1))  
+
+
+```
+
+```{r}
+# Calculate Agglomerative Coefficients
+ac_comp <- agnes(df.scaling, method = "complete")$ac
+ac_avg <- agnes(df.scaling, method = "average")$ac
+ac_sin <- agnes(df.scaling, method = "single")$ac
+ac_ward <- agnes(df.scaling, method = "ward")$ac
+
+ac_coef_df <- data.frame(
+  single = ac_sin, 
+  complete = ac_comp, 
+  average = ac_avg, 
+  ward = ac_ward
+)
+
+print(ac_coef_df)
+
+# Ward method has the highest agglomerative coefficient, so we'll use Ward for cutting the tree.
+
+```
+
+```{r}
+# Dendrogram for Ward method with enhanced coloring and labels
+ward.d <- as.dendrogram(ward)  # Convert hclust to dendrogram for better control
+ward.d <- color_branches(ward.d, k = 3)  
+ward.d <- color_labels(ward.d, k = 3)  
+plot(ward.d, main = "Ward Linkage with Enhanced Coloring", cex = 0.8)
+
+```
+
+```{r}
+# Cutting the dendrogram based on the number of clusters (k=7 and k=8)
+sil <- cutree(ward, k = 7)  # Using k=7 from Silhouette method
+gap <- cutree(ward, k = 8)  # Using k=8 from Gap statistic method
+
+# Display number of members in each cluster for both k = 7 and k = 8
+print("Cluster distribution for k = 7:")
+print(table(sil))
+
+print("Cluster distribution for k = 8:")
+print(table(gap))
+
+```
+
+```{r}
+# Plotting the dendrogram with clusters indicated (k=8)
+plot(ward, cex = 0.6)
+rect.hclust(ward, k = 8, border = 2:8)  # Draw rectangle around each cluster
+
+library(factoextra)
+
+# Visualizing the clusters using fviz_cluster
+fviz_cluster(list(data = df.scaling, cluster = sil))  # For k = 7
+fviz_cluster(list(data = df.scaling, cluster = gap))  # For k = 8
+
+# Plotting dendrogram with colors for the clusters (for k = 8)
+ward.d <- as.dendrogram(ward)
+ward.d <- color_branches(ward.d, k = 8)
+ward.d <- color_labels(ward.d, k = 8)
+plot(ward.d, main = "Cluster Dendrogram (Colored)", ylab = "Distance")
+```
+#Evaluation
+```{r}
+# First, add the hcluster labels to your dataframe
+df$hclusters <- as.factor(gap)  # Use the clustering result from the hierarchical cut
+
+# Summarizing the mean values for each cluster
+hcluster_summary <- df %>%
+  group_by(hclusters) %>%
+  summarise(
+    avg_age = mean(Age),
+    avg_income = mean(Annual.Income..k..),
+    avg_spending = mean(Spending.Score..1.100.)
+  )
+
+
+print(hcluster_summary)
+```
+
+
+
+
+
+
+
+##END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
