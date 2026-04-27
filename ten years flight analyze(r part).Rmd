@@ -173,7 +173,7 @@ Time.LeastDelay <- dbGetQuery(conn,
   FROM flights
   WHERE flights.Cancelled = 0 AND Diverted = 0 AND DepDelay > 0 #没取消的+没改降落地的+确实发生了depdelay
   ORDER BY DepDelay")#按小到大排序
-#你排除了准点和提早的航班
+#排除了准点和提早的航班
 head(Time.LeastDelay)
 #总结：寻找在所有发生过 delay 的航班里，谁的 delay 最小”
 #I filtered out cancelled and diverted flights, then examined departure times associated with low delay values and also compared frequencies of no-delay departures to identify time periods that were less delay-prone.
@@ -224,7 +224,7 @@ tail(Day.NoDelay)
 AvgDepDelay <- dbGetQuery(conn,
  "SELECT planes.year AS planesyear, AVG(flights.DepDelay) AS AvgDelay
  FROM planes JOIN flights USING (tailnum)
- #你想研究“飞机年份”和“延误”的关系，必须把两张表连起来
+ #想研究“飞机年份”和“延误”的关系，必须把两张表连起来
  WHERE flights.Cancelled = 0 AND flights.Diverted = 0
  AND flights.DepDelay > 0
  #在已经延误的航班里，不同飞机年份的平均延误程度
@@ -287,7 +287,7 @@ library(ggplot2)
 #为什么要比较年份间的系数变化因为它想知道：同一个变量，在不同年份的影响是不是一样？
 
 #专门写一个函数处理某一年的数据
-#为什么要这样？因为我要对不同年份重复做同一件事
+#为什么要这样？因为要对不同年份重复做同一件事
 get_coefficients <- function(year) {
   df_year <- read.csv(paste0("C:\\Users\\user\\Documents\\st2195\\EXTRACT\\", year, ".csv"))#为什么要检查diverted有没有两种价值呢01是正常的 0是不正常的模型没法学习
   if (length(unique(df_year$Diverted)) < 2) {
@@ -295,7 +295,7 @@ get_coefficients <- function(year) {
     return(NULL)
   }
   model <- glm(Diverted ~ DepTime + CRSDepTime + CRSArrTime + Distance + UniqueCarrier, data = df_year, family = binomial)
-  return(data.frame(Year = year, Coefficients = coef(model)))#因为你要把每一年的模型系数整理成统一格式，后面才能合并
+  return(data.frame(Year = year, Coefficients = coef(model)))#因为要把每一年的模型系数整理成统一格式，后面才能合并
   #coeff正就增加DepTime = 0.002起飞时间越往后，diverted 概率可能略微增加
   #coeff负CarrierAA = -0.5相比基准航空公司，AA 的 diverted 倾向更低
 }
