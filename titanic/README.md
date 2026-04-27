@@ -4,7 +4,7 @@
 Predict whether a passenger survived the Titanic sinking based on demographic and travel information.  
 This is a classic binary classification problem used to practice data cleaning, feature engineering, and model evaluation.
 
-**File**: `titanic.ipynb` (or `.Rmd`)  
+**File**:  `.Rmd`  
 
 ---
 
