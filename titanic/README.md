@@ -64,8 +64,4 @@ Precision, Recall, and F1 are defined as:
 
 ---
 
-## How to Run
 
-### Requirements (R)
-```r
-install.packages(c("tidyverse", "caret", "nnet", "e1071", "class", "pROC"))
